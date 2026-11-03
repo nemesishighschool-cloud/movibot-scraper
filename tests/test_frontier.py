@@ -111,3 +111,42 @@ def test_get_reessaye_avant_dabandonner(monkeypatch):
     monkeypatch.setattr(frontier.time, "sleep", lambda _: None)
     code, corps = frontier.get("https://example.org/", 5)
     assert code == 200 and corps == "ok" and compteur["n"] == 3
+
+
+def test_miroir_actif_essaie_tous_les_miroirs(monkeypatch):
+    from scraper import frontier
+    def faux(url, timeout=25, **kw):
+        if "mort.example" in url:
+            return 0, ""
+        return 200, "<html><title>Coflix</title></html>"
+    monkeypatch.setattr(frontier, "get", faux)
+    cfg = {"mirrors": ["mort.example", "bon.example"], "home": "/",
+           "home_marker": "Coflix"}
+    assert frontier.miroir_actif(cfg) == "bon.example"
+
+
+def test_preparer_bascule_si_sitemap_vide(monkeypatch, tmp_path):
+    """Un miroir sain mais au sitemap vide ne doit pas être retenu."""
+    from scraper import daemon, storage
+    c = storage.ouvrir(str(tmp_path / "t.sqlite3"))
+    s = daemon.Settings()
+    s.source = "coflix"
+    s.sync_force = True
+    s.max_pages = 1
+    monkeypatch.setattr(daemon, "actives", lambda: ["coflix"])
+    monkeypatch.setattr(daemon, "miroir_actif",
+                        lambda cfg, timeout=25: cfg["mirrors"][0])
+    monkeypatch.setattr(daemon, "telecharger", lambda *a, **k: "User-agent: *\nAllow: /")
+    vu = {"n": 0}
+    def faux_construire(source, cfg, domaine, *a, **k):
+        vu["n"] += 1
+        return [] if domaine == "coflix.esq" else [
+            {"source": source, "canonical_path": "/film/test/",
+             "url": f"https://{domaine}/film/test/", "lastmod": None,
+             "first_seen": "2026-11-02", "status": "pending"}]
+    monkeypatch.setattr(daemon, "construire", faux_construire)
+    actifs, _ = daemon.preparer(c, s)
+    assert actifs["coflix"] == "coflix.mom"     # bascule sur le miroir valide
+    assert vu["n"] == 2
+    assert c.execute("SELECT COUNT(*) FROM frontier").fetchone()[0] == 1
+    c.close()

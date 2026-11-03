@@ -37,25 +37,50 @@ def preparer(c, s: Settings):
         if s.source and source != s.source:
             continue
         cfg = SOURCES[source]
-        domaine = miroir_actif(cfg)
-        if not domaine:
-            log(f"⚠️ {source} : aucun miroir sain, source différée")
+        choisi = None
+        for domaine in cfg["mirrors"]:
+            if miroir_actif({**cfg, "mirrors": [domaine]}) is not None:
+                choisi = domaine
+                break
+        if not choisi:
+            log(f"⚠️ {source:13} : aucun miroir sain, source différée")
             continue
-        actifs[source] = domaine
-        textes[domaine] = telecharger(domaine, s.ua)
-        log(f"✅ {source:13} → {domaine}")
+        actifs[source] = choisi
+        textes[choisi] = telecharger(choisi, s.ua)
+        log(f"✅ {source:13} → {choisi}")
     robots = Robots(textes)
     deja = c.execute("SELECT COUNT(*) FROM frontier").fetchone()[0]
     if deja and not s.sync_force:
         log(f"   frontière déjà en base ({deja} URLs) → sitemaps ignorés "
             "(SCRAPER_SYNC=1 pour une mise à jour)")
     else:
-        for source, domaine in actifs.items():
+        for source, domaine in list(actifs.items()):
+            cfg = SOURCES[source]
             avant = time.time()
-            items = construire(source, SOURCES[source], domaine, robots,
+            items = construire(source, cfg, domaine, robots,
                                incremental=s.incremental, limite=s.limite,
                                max_pages=s.max_pages,
                                pause_pagination=s.pause_pagination)
+            # Un miroir peut répondre mais n'avoir qu'un sitemap vide (clones,
+            # pages parking). On essaie alors les autres miroirs avant d'abandonner.
+            if not items and cfg.get("mode") in ("sitemap", "sitemap_index"):
+                for autre in cfg["mirrors"]:
+                    if autre == domaine:
+                        continue
+                    if miroir_actif({**cfg, "mirrors": [autre]}) is None:
+                        continue
+                    textes[autre] = telecharger(autre, s.ua)
+                    robots = Robots(textes)
+                    essai = construire(source, cfg, autre, robots,
+                                       incremental=s.incremental, limite=s.limite,
+                                       max_pages=s.max_pages,
+                                       pause_pagination=s.pause_pagination)
+                    if essai:
+                        items, actifs[source] = essai, autre
+                        log(f"   ↪ {source} bascule sur {autre} (sitemap valide)")
+                        break
+            if not items:
+                log(f"   ⚠️ {source:13} : aucun sitemap exploitable, source différée")
             n = ajouter_frontiere(c, items, s.incremental)
             log(f"   frontière {source:13} : {len(items):6} URLs, {n:6} nouvelles "
                 f"({time.time()-avant:.0f}s)")
