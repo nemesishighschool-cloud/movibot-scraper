@@ -42,3 +42,23 @@ Allow: /
     assert any("search=yes" in s for s in r["signaux"])
     assert not autorisee("https://franime.org/api/secret", r)
     assert autorisee("https://franime.org/catalogue/naruto", r)
+
+
+def test_normalisation_avec_query_wawacity():
+    # Les fiches Wawacity sont des query strings sur "/" : il faut les garder.
+    assert normaliser("https://wawacity.wine/?p=film&id=60676-fight-club",
+                      "wawacity.wine", garder_query=True) == (
+        "https://wawacity.wine/?p=film&id=60676-fight-club",
+        "/?p=film&id=60676-fight-club")
+
+
+def test_registre_des_sources():
+    from scraper.config import SOURCES, actives
+    assert "frenchstream" in actives() and "coflix" in actives()
+    assert "wawacity" in actives() and "franime" in actives()
+    # Sources mortes ou protégées : présentes mais désactivées, avec une raison.
+    for n in ["monstream", "flemmix", "darkiworld"]:
+        assert n not in actives()
+        assert "DÉSACTIVÉ" in SOURCES[n]["note"]
+    assert SOURCES["coflix"]["mode"] == "sitemap_index"
+    assert SOURCES["wawacity"]["mode"] == "pagination"

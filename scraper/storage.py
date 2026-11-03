@@ -43,7 +43,10 @@ COLONNES = ["source", "source_domain", "canonical_path", "page_url", "title", "k
 
 def ouvrir(chemin: str) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(chemin) or ".", exist_ok=True)
-    c = sqlite3.connect(chemin)
+    # WAL + busy_timeout : plusieurs workers (un par source) écrivent en même temps.
+    c = sqlite3.connect(chemin, timeout=30)
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA busy_timeout=30000")
     c.executescript(SCHEMA)
     cols = {r[1] for r in c.execute("PRAGMA table_info(web_media)")}
     for col, typ in [("etat_lecteur", "TEXT")]:
