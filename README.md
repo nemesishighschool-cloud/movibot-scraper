@@ -19,14 +19,14 @@ Il produit une base de **métadonnées** (titres, années, genres, saisons,
 | Source | État | Fiches mesurées | Mode |
 |---|---|---|---|
 | FrenchStream (`fs26.lol`) | ✅ | 50 799 | sitemap + navigateur |
-| Coflix (`coflix.esq`) | ✅ | ~91 415 | index de 532 sitemaps |
-| Wawacity (`wawacity.wine`) | ✅ | ~100 000 | pagination (5 098 pages) |
+| Coflix (`coflix.esq`) | ✅ | ~15 000 | 532 sitemaps, 451 d'épisodes exclus |
+| Wawacity (`wawacity.wine`) | ✅ | ~83 000 | pagination (8 309 pages) |
 | FRAnime (`franime.org`) | ✅ | 1 621 | sitemap |
 | Monstream | ❌ désactivé | — | Cloudflare / timeout |
 | Flemmix (ex-Wiflix) | ❌ désactivé | — | page JS anti-bot, pas de sitemap |
 | Darkiworld | ❌ désactivé | — | HTTP 410 « Fermeture définitive » |
 
-**~243 835 fiches exploitables.** Les sources désactivées restent configurées
+**~150 420 fiches exploitables**, ~19,3 Go de HTML. Les sources désactivées restent configurées
 avec leurs miroirs et la raison ; réactivation :
 `SCRAPER_ENABLE=monstream,flemmix python3 -m scraper.cli sources`.
 `python3 -m scraper.cli sources` affiche l'état de chacune.
@@ -80,7 +80,7 @@ SCRAPER_MAX_PAGES=2 python3 -m scraper.cli run --limit 3 --pause 1
 |---|---|
 | `--limit N` | N fiches par source (test) |
 | `--source coflix` | une seule source |
-| `--workers 4` | **1 instance de Chrome par source**, jamais 2 sur le même domaine |
+| `--workers 4` | **1 worker par source** (défaut = auto), jamais 2 sur le même domaine |
 | `--pause 4` | force la pause (sinon : pause par source, 1 à 3 s) |
 | `--no-players` | passe catalogue seule, ~2× plus rapide |
 | `--max-pages 200` | borne la pagination Wawacity |
@@ -100,12 +100,14 @@ a changé.
 
 | Organisation | Durée |
 |---|---|
-| 1 worker pour tout | **243 h = 10,1 jours** |
-| 1 worker par source (4) | **120 h = 5,0 jours** |
-| + `--no-players` | **~71 h = 3,0 jours** |
+| 1 worker pour tout | **210,7 h = 8,8 jours** |
+| 1 worker par source (4) | **122,5 h = 5,1 jours** |
+| + `--no-players` | **66 h = 2,75 jours** |
 
-Le goulot est FrenchStream (clics sur les onglets de lecteurs). Ajouter des
-sources ne ralentit presque rien puisqu'elles tournent en parallèle.
+Le goulot est FrenchStream (119,9 h à lui seul, clics sur les onglets de
+lecteurs). Coflix respecte un `Crawl-delay: 10` et la frontière Wawacity prend
+2 h 32 au départ. Ajouter des sources ne ralentit presque rien puisqu'elles
+tournent en parallèle. **Sur le Core 2 Duo, compte 5 à 6 jours de calendrier.**
 
 ⚠️ **Le GPU n'accélère rien** : Chrome, le parsing HTML et SQLite sont CPU/RAM/
 réseau. Un T4 reste à 0 %. Voir `docs/TEMPS_ET_PARALLELISME.md`.

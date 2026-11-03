@@ -7,9 +7,10 @@ def test_estimation_4_sources_et_goulot():
     s.workers = 4
     e = estimer(s)
     assert e["sources_actives"] == 4
-    assert e["total_fiches"] > 200000
+    assert 140000 < e["total_fiches"] < 170000
     assert e["parallele_1_worker_par_source"]["jours"] < e["sequentiel_1_worker"]["jours"]
     assert e["parallele_1_worker_par_source"]["goulot"] == "frenchstream"
+    assert e["par_source"][2]["pause_s"] == 10.0  # Crawl-delay Coflix respecté
     assert "aucun effet" in e["gpu"]
 
 

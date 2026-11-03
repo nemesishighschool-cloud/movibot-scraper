@@ -52,8 +52,8 @@ SOURCES = {
         "selecteurs": {"titre": ["h1", ".cf-movie-title"],
                        "synopsis": [".cf-synopsis-text", ".cf-movie-synopsis-area"],
                        "episodes": [".cf-episode-item"]},
-        "mesure": 91415,
-        "note": "index de 532 sous-sitemaps × ~200 URLs ; HTML serveur, lecteur = connexion requise",
+        "mesure": 15000, "crawl_delay": 10.0,
+        "note": "532 sous-sitemaps mais 451 sont des épisodes exclus → ~15 000 fiches film/serie/anime ; robots Crawl-delay: 10",
     },
     "wawacity": {
         "enabled": True, "label": "Wawacity", "pause": 1.0,
@@ -66,8 +66,8 @@ SOURCES = {
         "exclude": ["?p=login", "?p=contact", "?p=aides", "?p=autres",
                     "?p=logiciels", "?p=jeux", "?p=ebooks", "?p=musiques"],
         "player_buttons": [],
-        "mesure": 100000, "crawl_delay": 1.0,
-        "note": "5098 pages de films × ~20 fiches ; robots Crawl-delay: 1 ; DDL, pas streaming",
+        "mesure": 83000, "crawl_delay": 1.0,
+        "note": "8309 pages de listing × ~10 nouvelles fiches ; robots Crawl-delay: 1 ; DDL, pas streaming",
     },
     "monstream": {
         "enabled": False, "label": "Monstream", "pause": 3.0,

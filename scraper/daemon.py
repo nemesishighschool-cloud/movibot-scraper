@@ -204,8 +204,10 @@ def executer(s: Settings) -> dict:
         return {"ok": False, "raison": "aucun miroir"}
     sources = [x for x in actifs if not s.source or x == s.source]
     t0 = time.time()
-    if s.workers > 1 and len(sources) > 1:
-        n = min(s.workers, len(sources))
+    # SCRAPER_WORKERS=0 (défaut) = auto : 1 worker par source active.
+    workers = s.workers if s.workers > 0 else len(sources)
+    if workers > 1 and len(sources) > 1:
+        n = min(workers, len(sources))
         log(f"⚡ {n} workers en parallèle (1 par source/domaine)")
         with concurrent.futures.ThreadPoolExecutor(max_workers=n) as ex:
             futures = {ex.submit(executer_source, s.clone(src), actifs, robots, src): src
@@ -225,5 +227,5 @@ def executer(s: Settings) -> dict:
     log(f"TERMINÉ | {bilan['fiches']} fiches | {bilan['en_attente']} restantes | "
         f"{time.time()-t0:.0f}s")
     return {"ok": True, "duree": round(time.time() - t0, 1),
-            "workers": min(s.workers, len(sources)) if s.workers > 1 else 1,
+            "workers": min(workers, len(sources)) if workers > 1 else 1,
             "detail_workers": resultats, **bilan}

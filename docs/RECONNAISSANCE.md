@@ -55,5 +55,12 @@ Titre/synopsis/langues 100 %, année 87,8 %, genres 85,2 %, affiche 87 %,
 lecteurs 36,1 % avant clic sur les onglets.
 Projection pour ~52 400 fiches : **~57 heures**.
 
+## Correction du 2026-11-02 (après mesure fine)
+
+- Coflix : 532 sous-sitemaps dont **451 d'épisodes** → seuls ~15 000 films/séries/animes passent le filtre ; `robots.txt` impose `Crawl-delay: 10` au `User-agent: *`.
+- Wawacity : 8 309 pages de listing (5 098 films + 2 805 séries + 406 animés),
+  ~10 nouvelles fiches par page → ~83 000 fiches, frontière ≈ 2 h 32.
+- Ces chiffres corrigent une première estimation trop haute ; `estimate` les utilise.
+
 Les rapports détaillés restent dans les dépôts frères
 (`RAPPORT_ECHANTILLON_WEB.md`, `TEST_LECTURE_WEB.md`, `CE_QUON_OBTIENDRA.md`).
