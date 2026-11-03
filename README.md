@@ -26,7 +26,8 @@ la limite des 6 h. **Aucune machine à laisser allumée.**
 
 | Workflow | Fréquence | Rôle |
 |---|---|---|
-| `scrape.yml` | toutes les 6 h | 4 jobs matriciels (1 par source) |
+| `scrape.yml` | toutes les 3 h + enchaînement automatique | 4 jobs matriciels (1 par source) |
+| `chain.yml` | **à la fin de chaque run** | relance le run suivant tant qu il reste des fiches |
 | `export.yml` | après chaque scrape + quotidien | fusionne les 4 bases → CSV/XLSX/artefact |
 | `refresh.yml` | lundi 03:00 UTC | relit les sitemaps, ne remet en attente que les `<lastmod>` modifiés |
 
@@ -38,10 +39,10 @@ la limite des 6 h. **Aucune machine à laisser allumée.**
 
 | Scénario | Runs | Jobs | Minutes runner | Calendrier |
 |---|---|---|---|---|
-| Normal | **22** | 40 | 12 641 | **≈ 5,0 jours** |
-| `no_players=true` | **12** | 30 | 9 254 | **≈ 2,75 jours** |
+| Normal (mesuré) | **38** | 58 | 16 609 | **≈ 8 jours** |
+| `no_players=true` | **13** | 33 | 9 244 | **≈ 2,7 jours** |
 
-Coût : **0 €** sur dépôt public. Le goulot est FrenchStream (22 jobs de 5 h 30).
+Coût : **0 €** sur dépôt public. Le goulot est FrenchStream : **13,2 s/fiche mesurés en CI** (clics sur les 3 lecteurs), soit 186 h de scrape pur → 38 runs de 5 h.
 
 **« Temps réel »** : les artefacts `upload-artifact@v4` sont **immuables** et
 publiés en fin de job (~5 h), ce n'est pas un flux continu. Le canal réellement

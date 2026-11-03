@@ -47,21 +47,22 @@ contient aucun secret (vérifié avant publication).
 
 | Source | Minutes | Jobs de 5 h 30 |
 |---|---|---|
-| FrenchStream | 7 194 | **22** |
+| FrenchStream | 11 178 (13,2 s/fiche) | **38** |
 | Coflix (Crawl-delay 10) | 2 700 | 9 |
 | Wawacity (+ 2 h 30 de frontière) | 2 640 | 8 |
 | FRAnime | 102 | 1 |
-| **Total** | **12 641** | **40 jobs** |
+| **Total** | **16 609** | **58 jobs** |
 
 > Sur CI, Coflix étant différé (§9) : 31 jobs, 9 936 min, durée inchangée.
 
 Les 4 sources tournent **en parallèle** dans un même run (matrice). Le nombre
-de runs est donc piloté par FrenchStream : **22 workflow runs**.
+de runs est donc piloté par FrenchStream : **38 workflow runs** (mesuré en CI
+le 2026-11-03 : 200 fiches en 43 min 58 s = 13,2 s/fiche).
 
 | Scénario | Runs | Jobs | Minutes | Calendrier |
 |---|---|---|---|---|
-| Normal (avec lecteurs) | **22** | 40 | 12 641 | **≈ 121 h = 5,0 jours** |
-| `--no-players` (catalogue seul) | **12** | 30 | 9 254 | **≈ 66 h = 2,75 jours** |
+| Normal (avec lecteurs) | **38** | 58 | 16 609 | **≈ 190 h = 7,9 jours** |
+| `--no-players` (catalogue seul) | **13** | 33 | 9 244 | **≈ 65 h = 2,7 jours** |
 
 Les runs s'enchaînent toutes les 6 h via `schedule`. Aucune intervention
 manuelle, aucun GPU, aucun crédit payé.
@@ -173,3 +174,18 @@ Suivi en direct :
 - onglet **Actions** du dépôt ;
 - branches `data-<source>` (base SQLite gzip, ~toutes les 25 min) ;
 - artefacts `db-<source>` en fin de job et `movibot-base-complete` après chaque run.
+
+
+## 10. Mesures réelles du 2026-11-03 (run 41628300453)
+
+| Source | Mesure |
+|---|---|
+| FrenchStream | 200 fiches à 12:20:24 UTC, 400 à 13:04:22 UTC → **13,2 s/fiche** |
+| FRAnime | 1 621 fiches terminées à 13:02:49 UTC → **3,4 s/fiche**, 0 restante |
+| Coflix | différé proprement (IP GitHub bloquée) |
+| Wawacity | frontière de 8 309 pages (~2 h 30) construite au premier run |
+
+Conséquence : la première estimation (5 jours) était optimiste. **Compter 8 jours
+de calendrier, 9 à 10 avec les aléas de cron.** Le correctif `chain.yml`
+(workflow_run + cron de secours + garde anti-doublon) garantit l'enchaînement
+même si un run planifié est supprimé par GitHub.
