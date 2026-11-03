@@ -1,0 +1,59 @@
+name: MoviBot — enchaînement
+
+# Déclenché à la FIN de chaque run de scrape. Vérifie sur les branches data-*
+# s'il reste des fiches ; si oui, relance immédiatement un run. C'est ce qui
+# garantit l'enchaînement même si un cron est retardé ou supprimé par GitHub.
+# workflow_dispatch est l'exception documentée : GITHUB_TOKEN peut créer un run.
+on:
+  workflow_run:
+    workflows: ["MoviBot — scrape"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: movibot-chain
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compter les fiches restantes
+        id: reste
+        run: |
+          TOTAL=0
+          for S in frenchstream coflix wawacity franime; do
+            N=0
+            if git fetch -q origin "data-$S" 2>/dev/null && \
+               git cat-file -e "FETCH_HEAD:index_web.sqlite3.gz" 2>/dev/null; then
+              git show "FETCH_HEAD:index_web.sqlite3.gz" | gunzip -c > "/tmp/$S.sqlite3"
+              N=$(python3 -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute(\"SELECT COUNT(*) FROM frontier WHERE status='pending'\").fetchone()[0])" "/tmp/$S.sqlite3" 2>/dev/null || echo 0)
+            fi
+            echo "  $S : $N fiches restantes"
+            TOTAL=$((TOTAL + N))
+          done
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "TOTAL : $TOTAL"
+
+      - name: Relancer le scrape
+        if: steps.reste.outputs.total != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run scrape.yml --ref main \
+            -f max_minutes=300 -f sync=false -f no_players=false -f max_pages=0
+          echo "Run suivant declenche automatiquement"
+
+      - name: Rien a faire
+        if: steps.reste.outputs.total == '0'
+        run: |
+          echo "Plus aucune fiche en attente : extraction complete."
