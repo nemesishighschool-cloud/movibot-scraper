@@ -8,7 +8,7 @@ on:
     - cron: "0 3 * * 1"     # lundi 03:00 UTC
 
 concurrency:
-  group: movibot-refresh
+  group: movibot-scrape  # sérialisé avec scrape : pas d écrasement de checkpoint
   cancel-in-progress: false
 
 permissions:
