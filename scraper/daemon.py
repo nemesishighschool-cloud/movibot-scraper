@@ -130,7 +130,8 @@ def _checkpoint(c, s, compteur, force: bool = False):
         log(f"   ⚠️ checkpoint échoué : {type(e).__name__}: {str(e)[:100]}")
 
 
-def executer_source(s: Settings, actifs: dict, robots, source: str) -> dict:
+def executer_source(s: Settings, actifs: dict, robots, source: str,
+                     debut: float | None = None) -> dict:
     """Un worker = une source = un domaine = un navigateur."""
     c = ouvrir(s.db)
     domaine = actifs[source]
@@ -141,7 +142,9 @@ def executer_source(s: Settings, actifs: dict, robots, source: str) -> dict:
         c.close()
         return {"source": source, "nouvelles": 0, "erreurs": 0}
 
-    t0, ok, erreurs, consecutives = time.time(), 0, 0, 0
+    # debut = début du RUN (avant la frontière) pour que le budget couvre tout
+    t0 = debut if debut is not None else time.time()
+    ok, erreurs, consecutives = 0, 0, 0
     navigateur = b = page = None
     try:
         if cfg["needs_browser"]:
@@ -242,6 +245,7 @@ def executer(s: Settings) -> dict:
     signal.signal(signal.SIGINT, _arreter)
     signal.signal(signal.SIGTERM, _arreter)
     ARRET.clear()
+    debut_run = time.time()
     c = ouvrir(s.db)
     actifs, robots = preparer(c, s)
     c.close()
@@ -256,7 +260,7 @@ def executer(s: Settings) -> dict:
         n = min(workers, len(sources))
         log(f"⚡ {n} workers en parallèle (1 par source/domaine)")
         with concurrent.futures.ThreadPoolExecutor(max_workers=n) as ex:
-            futures = {ex.submit(executer_source, s.clone(src), actifs, robots, src): src
+            futures = {ex.submit(executer_source, s.clone(src), actifs, robots, src, debut_run): src
                        for src in sources}
             resultats = []
             for f in concurrent.futures.as_completed(futures):
@@ -265,7 +269,7 @@ def executer(s: Settings) -> dict:
                 except Exception as e:
                     resultats.append({"source": futures[f], "erreur": str(e)[:120]})
     else:
-        resultats = [executer_source(s.clone(src), actifs, robots, src)
+        resultats = [executer_source(s.clone(src), actifs, robots, src, debut_run)
                      for src in sources]
     c = ouvrir(s.db)
     bilan = stats(c)

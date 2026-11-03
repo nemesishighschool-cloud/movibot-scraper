@@ -16,11 +16,14 @@ from .config import Settings, SOURCES, actives
 
 # Un job GitHub-hosted est coupé à 6 h SANS préavis. On garde 30 min de marge
 # pour le checkpoint, l'artefact et le cache.
-JOB_BUDGET_MIN = 330
+JOB_BUDGET_MIN = 300   # --max-minutes 300 (5 h), marge avant les 6 h
 LIMITE_JOB_MIN = 360
 
 # Surcoût mesuré par fiche, hors pause (chargement + parsing + clics + écriture)
-SURCOUT = {"frenchstream": 5.5, "franime": 0.8, "coflix": 0.8,
+# Mesuré en CI le 2026-11-03 : FrenchStream 200 fiches en 43 min 58 s
+# = 13,2 s/fiche (pause 3 s + 10,2 s de clics sur les 3 lecteurs).
+# FRAnime : 1 621 fiches en ~90 min = 3,4 s/fiche.
+SURCOUT = {"frenchstream": 10.2, "franime": 0.4, "coflix": 0.8,
            "wawacity": 0.8, "monstream": 3.0, "flemmix": 3.0, "darkiworld": 0.8}
 
 # Frontière : sitemap 8,9 Mo, index de 532 sitemaps, 8 309 pages de listing Wawacity.
@@ -83,6 +86,9 @@ def estimer(s: Settings | None = None) -> dict:
         "workflow_runs_necessaires": nb_runs,
         "total_minutes_runner": round(total_minutes),
         "duree_calendaire_heures": round(nb_runs * JOB_BUDGET_MIN / 60, 1),
+        "duree_calendaire_jours": round(nb_runs * JOB_BUDGET_MIN / 86400 * 60, 1),
+        "avec_imprevus_jours": round(nb_runs * JOB_BUDGET_MIN / 86400 * 60 * 1.15, 1),
+        "chaine_cron": "17 */3 * * * : 1 run en attente en permanance → quasi continu",
         "avec_no_players": {
             "workflow_runs": max(jobs_np.values(), default=0),
             "total_jobs": sum(jobs_np.values()),
