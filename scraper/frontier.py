@@ -21,17 +21,31 @@ def maintenant() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def get(url: str, timeout: int = 40, ua: str = USER_AGENT) -> tuple[int, str]:
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": ua,
-                                                   "Accept-Language": "fr-FR,fr;q=0.9"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, r.read(30_000_000).decode("utf-8", "ignore")
-    except Exception:
-        return 0, ""
+def get(url: str, timeout: int = 40, ua: str = USER_AGENT,
+        essais: int = 3) -> tuple[int, str]:
+    """GET avec retries : les IP de datacenter GitHub essuient des 403 ponctuels.
+
+    Aucune rotation d'IP, aucun contournement : on réessaie simplement la même
+    URL avec un court délai, puis on abandonne proprement.
+    """
+    headers = {"User-Agent": ua, "Accept-Language": "fr-FR,fr;q=0.9",
+               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+               "Accept-Encoding": "identity"}
+    for i in range(essais):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                if r.status == 200:
+                    return r.status, r.read(30_000_000).decode("utf-8", "ignore")
+                code = r.status
+        except Exception:
+            code = 0
+        if i < essais - 1:
+            time.sleep(1.2 * (i + 1))
+    return code, ""
 
 
-def miroir_actif(cfg_source: dict, timeout: int = 12) -> str | None:
+def miroir_actif(cfg_source: dict, timeout: int = 25) -> str | None:
     for domaine in cfg_source["mirrors"]:
         code, html = get(f"https://{domaine}{cfg_source['home']}", timeout)
         marqueur = cfg_source.get("home_marker", "").lower()
@@ -53,8 +67,19 @@ def normaliser(url: str, domaine: str, garder_query: bool = False) -> tuple[str,
 def urls_sitemap(domaine: str, chemin_sitemap: str, timeout: int = 40,
                  index: bool = False, pause: float = 0.1, max_urls: int = 0):
     """Renvoie (url, lastmod|None). Suit un index de sitemaps si index=True."""
-    code, texte = get(f"https://{domaine}{chemin_sitemap}", timeout)
-    if code != 200:
+    # Certains miroirs renvoient un 403 ponctuel sur /sitemap.xml mais répondent
+    # sur /sitemap_index.xml ou /wp-sitemap.xml : on essaie les chemins connus.
+    candidats = list(dict.fromkeys(
+        [chemin_sitemap] + (["/sitemap_index.xml", "/wp-sitemap.xml", "/sitemap.xml"]
+                            if index else [])))
+    texte = ""
+    for chemin in candidats:
+        code, t = get(f"https://{domaine}{chemin}", timeout)
+        if code == 200 and t:
+            texte = t
+            if not index or "<sitemap" in t:
+                break
+    if not texte:
         return []
     if "<sitemap" in texte and "<sitemapindex" in texte or (index and "<sitemap>" in texte):
         enfants = re.findall(r"<loc>\s*(.*?)\s*</loc>", texte, re.S | re.I)

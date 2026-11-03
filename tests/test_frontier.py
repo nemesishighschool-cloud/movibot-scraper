@@ -62,3 +62,52 @@ def test_registre_des_sources():
         assert "DÉSACTIVÉ" in SOURCES[n]["note"]
     assert SOURCES["coflix"]["mode"] == "sitemap_index"
     assert SOURCES["wawacity"]["mode"] == "pagination"
+
+
+def test_urls_sitemap_index_replis(monkeypatch):
+    """Si /sitemap.xml échoue, on essaie les autres chemins connus."""
+    from scraper import frontier
+    appels = []
+    index_xml = ('<?xml version="1.0"?><sitemapindex><sitemap>'
+                 '<loc>https://example.org/movies-sitemap1.xml</loc>'
+                 '</sitemap></sitemapindex>')
+    enfant = ('<?xml version="1.0"?><urlset><url>'
+              '<loc>https://example.org/film/test/</loc>'
+              '<lastmod>2026-11-02</lastmod></url></urlset>')
+
+    def faux_get(url, timeout=40, **kw):
+        appels.append(url)
+        if url.endswith('sitemap.xml'):
+            return 403, ""
+        if url.endswith('sitemap_index.xml'):
+            return 200, index_xml
+        return 200, enfant
+
+    monkeypatch.setattr(frontier, "get", faux_get)
+    out = frontier.urls_sitemap("example.org", "/sitemap.xml", index=True)
+    assert out == [("https://example.org/film/test/", "2026-11-02")]
+    assert any("sitemap_index.xml" in u for u in appels)
+
+
+def test_get_reessaye_avant_dabandonner(monkeypatch):
+    """Un 403 ponctuel est réessayé, sans rotation d'IP ni contournement."""
+    import urllib.request
+    from scraper import frontier
+    compteur = {"n": 0}
+
+    class Reponse:
+        status = 200
+        def read(self, _): return b"ok"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def faux_urlopen(req, timeout=None):
+        compteur["n"] += 1
+        if compteur["n"] < 3:
+            raise OSError("403 simulé")
+        return Reponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", faux_urlopen)
+    monkeypatch.setattr(frontier.time, "sleep", lambda _: None)
+    code, corps = frontier.get("https://example.org/", 5)
+    assert code == 200 and corps == "ok" and compteur["n"] == 3
