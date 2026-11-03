@@ -40,6 +40,8 @@ def main(argv=None):
                    help="1 navigateur par source en parallèle (jamais 2 sur le même domaine)")
     r.add_argument("--max-pages", type=int, default=None,
                    help="borne les pages de listing pour les sources en mode pagination")
+    r.add_argument("--max-minutes", type=float, default=None,
+                   help="budget de temps du job (GitHub Actions : < 360 min)")
     r.add_argument("--no-players", action="store_true")
     r.add_argument("--probe-players", action="store_true")
     a = p.parse_args(argv)
@@ -55,6 +57,8 @@ def main(argv=None):
             s.workers = a.workers
         if a.max_pages is not None:
             s.max_pages = a.max_pages
+        if a.max_minutes is not None:
+            s.max_minutes = a.max_minutes
         if a.no_players:
             s.joueurs = False
         if a.probe_players:

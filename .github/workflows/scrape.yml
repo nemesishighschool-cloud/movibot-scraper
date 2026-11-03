@@ -1,0 +1,110 @@
+name: MoviBot — scrape
+
+# Un job GitHub-hosted est coupé à 6 h. On chaîne donc les runs :
+# chaque run restaure la base, avance ~5 h, republie le checkpoint, s'arrête.
+on:
+  workflow_dispatch:
+    inputs:
+      max_minutes:
+        description: "Budget de temps par job (minutes, < 330)"
+        required: false
+        default: "300"
+      sync:
+        description: "Relire les sitemaps (mise à jour du catalogue)"
+        type: boolean
+        default: false
+      no_players:
+        description: "Passe catalogue rapide (sans clics sur les lecteurs)"
+        type: boolean
+        default: false
+      max_pages:
+        description: "Borne les pages Wawacity (0 = toutes, 2 pour un test)"
+        required: false
+        default: "0"
+  schedule:
+    - cron: "0 */6 * * *"      # toutes les 6 h, enchaînement automatique
+
+concurrency:
+  group: movibot-scrape
+  cancel-in-progress: false    # un run à la fois, jamais de doublon
+
+permissions:
+  contents: write              # push des checkpoints sur data-*
+  actions: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350       # 5 h 50 : marge avant la coupure des 6 h
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [frenchstream, coflix, wawacity, franime]
+    env:
+      SCRAPER_SOURCE: ${{ matrix.source }}
+      SCRAPER_DB: data/index_web.sqlite3
+      SCRAPER_WORKERS: "1"     # 1 worker = 1 source = 1 domaine, jamais 2
+      SCRAPER_CHECKPOINT: data/checkpoint.sqlite3
+      SCRAPER_CHECKPOINT_EVERY: "200"
+      SCRAPER_MAX_PAGES: "0"
+      SCRAPER_PLAYERS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Dépendances
+        run: |
+          python -m pip install -q -r requirements.txt
+          if [ "${{ matrix.source }}" = "frenchstream" ]; then
+            python -m playwright install chromium
+            python -m playwright install-deps chromium || true
+          fi
+
+      - name: Restaurer le checkpoint
+        run: bash scripts/gh_restore.sh "${{ matrix.source }}" "$SCRAPER_DB"
+
+      - name: Scraper
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCRAPER_SYNC: ${{ inputs.sync && '1' || '0' }}
+          SCRAPER_PLAYERS: ${{ inputs.no_players && '0' || '1' }}
+          SCRAPER_MAX_PAGES: ${{ inputs.max_pages || '0' }}
+          SCRAPER_CHECKPOINT_HOOK: >-
+            bash scripts/gh_checkpoint.sh ${{ matrix.source }} data/checkpoint.sqlite3
+        run: |
+          MINUTES="${{ inputs.max_minutes || '300' }}"
+          ARGS=""
+          if [ "${{ inputs.no_players }}" = "true" ]; then ARGS="$ARGS --no-players"; fi
+          python -m scraper.cli run --max-minutes "$MINUTES" $ARGS
+
+      - name: État de la base
+        run: |
+          python -m scraper.cli status
+          python -m scraper.cli verify || true
+          echo "### ${{ matrix.source }}" >> "$GITHUB_STEP_SUMMARY"
+          python -m scraper.cli status >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Préparer l'artefact
+        if: always()
+        run: |
+          if [ -f "$SCRAPER_DB" ]; then
+            gzip -c "$SCRAPER_DB" > "data/${{ matrix.source }}.sqlite3.gz"
+            ls -lh "data/${{ matrix.source }}.sqlite3.gz"
+          fi
+
+      - name: Publier l'artefact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-${{ matrix.source }}
+          path: data/${{ matrix.source }}.sqlite3.gz
+          if-no-files-found: warn
+          retention-days: 2
+          compression-level: 0     # déjà gzip
+          overwrite: true

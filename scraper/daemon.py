@@ -45,15 +45,20 @@ def preparer(c, s: Settings):
         textes[domaine] = telecharger(domaine, s.ua)
         log(f"✅ {source:13} → {domaine}")
     robots = Robots(textes)
-    for source, domaine in actifs.items():
-        avant = time.time()
-        items = construire(source, SOURCES[source], domaine, robots,
-                           incremental=s.incremental, limite=s.limite,
-                           max_pages=s.max_pages,
-                           pause_pagination=s.pause_pagination)
-        n = ajouter_frontiere(c, items, s.incremental)
-        log(f"   frontière {source:13} : {len(items):6} URLs, {n:6} nouvelles "
-            f"({time.time()-avant:.0f}s)")
+    deja = c.execute("SELECT COUNT(*) FROM frontier").fetchone()[0]
+    if deja and not s.sync_force:
+        log(f"   frontière déjà en base ({deja} URLs) → sitemaps ignorés "
+            "(SCRAPER_SYNC=1 pour une mise à jour)")
+    else:
+        for source, domaine in actifs.items():
+            avant = time.time()
+            items = construire(source, SOURCES[source], domaine, robots,
+                               incremental=s.incremental, limite=s.limite,
+                               max_pages=s.max_pages,
+                               pause_pagination=s.pause_pagination)
+            n = ajouter_frontiere(c, items, s.incremental)
+            log(f"   frontière {source:13} : {len(items):6} URLs, {n:6} nouvelles "
+                f"({time.time()-avant:.0f}s)")
     return actifs, robots
 
 
@@ -75,18 +80,29 @@ def viser_fiche(page, url: str, s: Settings) -> str:
     return html
 
 
-def _checkpoint(c, s, compteur):
-    if s.checkpoint and compteur and compteur % s.checkpoint_every == 0:
-        try:
-            import os
-            import sqlite3
-            os.makedirs(os.path.dirname(s.checkpoint) or ".", exist_ok=True)
-            dst = sqlite3.connect(s.checkpoint)
-            c.backup(dst)
-            dst.close()
-            log(f"   ☁️ checkpoint → {s.checkpoint} ({compteur} fiches)")
-        except Exception as e:
-            log(f"   ⚠️ checkpoint échoué : {type(e).__name__}")
+def _checkpoint(c, s, compteur, force: bool = False):
+    if not s.checkpoint or not compteur:
+        return
+    if not force and compteur % s.checkpoint_every != 0:
+        return
+    try:
+        import os
+        import sqlite3
+        import subprocess
+        os.makedirs(os.path.dirname(s.checkpoint) or ".", exist_ok=True)
+        dst = sqlite3.connect(s.checkpoint)
+        c.backup(dst)
+        dst.close()
+        log(f"   ☁️ checkpoint → {s.checkpoint} ({compteur} fiches)")
+        if s.checkpoint_hook:
+            r = subprocess.run(s.checkpoint_hook, shell=True, cwd=os.getcwd(),
+                               timeout=180, capture_output=True, text=True)
+            if r.returncode == 0:
+                log("   ☁️ checkpoint publié (hook OK)")
+            else:
+                log(f"   ⚠️ hook checkpoint : {r.stderr.strip()[:120]}")
+    except Exception as e:
+        log(f"   ⚠️ checkpoint échoué : {type(e).__name__}: {str(e)[:100]}")
 
 
 def executer_source(s: Settings, actifs: dict, robots, source: str) -> dict:
@@ -131,9 +147,14 @@ def executer_source(s: Settings, actifs: dict, robots, source: str) -> dict:
         base = s.pause if s.pause != 3.0 else cfg.get("pause", s.pause)
         pause_domaine = max(base, robots.pause(domaine) or 0,
                             cfg.get("crawl_delay", 0) or 0)
+        t_limite = s.max_minutes * 60 if s.max_minutes else None
         for n, item in enumerate(a_traiter, 1):
             if ARRET.is_set():
                 log(f"⏹ {source} : arrêt demandé, état sauvegardé")
+                break
+            if t_limite and time.time() - t0 >= t_limite:
+                log(f"⏱ {source} : budget de {s.max_minutes:.0f} min atteint "
+                    f"({ok} fiches), arrêt propre pour le prochain run Actions")
                 break
             d = None
             try:
@@ -183,7 +204,7 @@ def executer_source(s: Settings, actifs: dict, robots, source: str) -> dict:
     finally:
         if navigateur:
             navigateur.stop()
-        _checkpoint(c, s, ok)
+        _checkpoint(c, s, ok, force=True)   # toujours publier l'état final du job
         c.execute("INSERT INTO runs (started_at, ended_at, inserted, errors, note) "
                   "VALUES (?,?,?,?,?)", (maintenant(), maintenant(), ok, erreurs, source))
         c.commit()

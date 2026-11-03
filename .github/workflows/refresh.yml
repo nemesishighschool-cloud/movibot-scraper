@@ -1,0 +1,49 @@
+name: MoviBot — refresh sitemaps
+
+# Met à jour la file d'attente : ne remet en attente que les URLs dont le
+# <lastmod> a changé. Hebdomadaire + déclenchement manuel.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"     # lundi 03:00 UTC
+
+concurrency:
+  group: movibot-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350     # Wawacity : ~2 h 30 de pagination
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [frenchstream, coflix, wawacity, franime]
+    env:
+      SCRAPER_SOURCE: ${{ matrix.source }}
+      SCRAPER_DB: data/index_web.sqlite3
+      SCRAPER_SYNC: "1"
+      SCRAPER_MAX_PAGES: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Dépendances
+        run: python -m pip install -q -r requirements.txt
+      - name: Restaurer la base
+        run: bash scripts/gh_restore.sh "${{ matrix.source }}" "$SCRAPER_DB"
+      - name: Relire les sitemaps
+        run: python -m scraper.cli sync
+      - name: État
+        run: python -m scraper.cli status
+      - name: Publier le checkpoint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/gh_checkpoint.sh "${{ matrix.source }}" "$SCRAPER_DB"

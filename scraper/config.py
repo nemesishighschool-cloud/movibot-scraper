@@ -149,6 +149,12 @@ class Settings:
         self.pause_pagination = float(opt("SCRAPER_PAGINATION_PAUSE", "0.3"))
         self.checkpoint = opt("SCRAPER_CHECKPOINT", "") or None
         self.checkpoint_every = int(opt("SCRAPER_CHECKPOINT_EVERY", "100"))
+        # GitHub Actions : budget de temps par job (doit rester sous les 6 h)
+        self.max_minutes = float(opt("SCRAPER_MAX_MINUTES", "0")) or 0
+        # Actions : ne pas reconstruire les sitemaps à chaque run (Wawacity = 2h30).
+        self.sync_force = opt("SCRAPER_SYNC", "0") == "1"
+        # Commande exécutée après chaque checkpoint (ex: push du DB sur data-*)
+        self.checkpoint_hook = opt("SCRAPER_CHECKPOINT_HOOK", "") or None
 
     def clone(self, source: str) -> "Settings":
         n = Settings()

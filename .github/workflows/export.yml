@@ -1,0 +1,79 @@
+name: MoviBot — export base complète
+
+# Fusionne les 4 branches data-* en UNE base + CSV + XLSX, et publie
+# l'artefact. Se déclenche après chaque run de scrape → base fusionnée
+# rafraîchie toutes les ~6 h.
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["MoviBot — scrape"]
+    types: [completed]
+  schedule:
+    - cron: "0 4 * * *"
+
+concurrency:
+  group: movibot-export
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Dépendances
+        run: python -m pip install -q -r requirements.txt
+
+      - name: Récupérer les 4 bases
+        run: |
+          mkdir -p data exports
+          for S in frenchstream coflix wawacity franime; do
+            if git fetch -q origin "data-$S" 2>/dev/null && \
+               git cat-file -e "FETCH_HEAD:index_web.sqlite3.gz" 2>/dev/null; then
+              git show "FETCH_HEAD:index_web.sqlite3.gz" | gunzip -c > "data/src-$S.sqlite3"
+              echo "✅ data-$S ($(du -h "data/src-$S.sqlite3" | cut -f1))"
+            else
+              echo "ℹ️ data-$S pas encore publié"
+            fi
+          done
+
+      - name: Fusionner et exporter
+        run: |
+          python scripts/merge_bases.py 'data/src-*.sqlite3' \
+            --out data/index_web_complete.sqlite3 --exports exports
+          gzip -c data/index_web_complete.sqlite3 > exports/index_web_complete.sqlite3.gz
+          ls -lh exports
+
+      - name: Résumé
+        run: |
+          echo "### Base MoviBot" >> "$GITHUB_STEP_SUMMARY"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import sqlite3
+          c=sqlite3.connect('data/index_web_complete.sqlite3')
+          print(f"- Fiches : {c.execute('SELECT COUNT(*) FROM web_media').fetchone()[0]}")
+          print(f"- Par source : {dict(c.execute('SELECT source,COUNT(*) FROM web_media GROUP BY source'))}")
+          print(f"- Avec lecteur : {c.execute('SELECT COUNT(*) FROM web_media WHERE embed_url IS NOT NULL').fetchone()[0]}")
+          PY
+
+      - name: Publier l'artefact complet
+        uses: actions/upload-artifact@v4
+        with:
+          name: movibot-base-complete
+          path: |
+            exports/Media_web.csv
+            exports/MoviBot_Base_Web.xlsx
+            exports/index_web_complete.sqlite3.gz
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0
+          overwrite: true
