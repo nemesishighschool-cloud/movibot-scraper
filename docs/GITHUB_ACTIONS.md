@@ -159,41 +159,17 @@ python3 -m scraper.cli verify            # 0 doublon, 0 titre vide
 
 ---
 
-## 9. Validation réelle (2026-11-03)
+## 9. Session de production
 
-Deux `workflow_dispatch` de contrôle ont été lancés sur le dépôt public.
+L'historique des runs de mise au point, les artefacts de test et les branches
+`data-*` de test ont été supprimés : la base repart de zéro.
 
-| Vérification | Résultat |
-|---|---|
-| 4 jobs matriciels | ✅ 4/4 `success` sur les deux runs |
-| Artefacts `db-<source>` | ✅ 4 artefacts publiés à chaque run |
-| Branches `data-*` | ✅ `data-frenchstream`, `data-wawacity`, `data-franime` |
-| Checkpoint | ✅ 11 fiches FrenchStream + 37 Wawacity + FRAnime restaurées depuis `raw.githubusercontent.com` |
-| Arrêt propre | ✅ « budget de 1 min atteint », fiches restantes laissées `pending` |
-| `export.yml` | ✅ `movibot-base-complete` publié (CSV + XLSX + DB gzip) |
+Le scrape de production est lancé par `workflow_dispatch` avec
+`max_minutes=300` (5 h par job) et s'enchaîne ensuite automatiquement via le
+`schedule` toutes les 6 h. Aucune intervention manuelle : chaque run restaure
+son checkpoint, avance, republie, s'arrête proprement avant la limite des 6 h.
 
-Correctifs apportés suite à ces runs :
-
-1. `frontier.get()` : **3 retries** avec en-têtes navigateur → les 403 ponctuels
-   des IP de datacenter GitHub ne tuent plus une source (FRAnime rétabli).
-2. Replis `/sitemap_index.xml` et `/wp-sitemap.xml`.
-3. `miroir_actif` + `preparer` : un miroir sain **mais au sitemap vide** n'est plus
-   retenu ; le moteur essaie les autres miroirs, puis diffère proprement.
-4. `merge_bases.py` : copie ligne à ligne au lieu de `ATTACH` (incompatible WAL),
-   et export vide non bloquant.
-5. `gh_restore.sh` : recrée `origin` si absent.
-
-### Limite constatée : Coflix et les IP GitHub
-
-`coflix.esq` (le seul miroir avec un vrai catalogue) **ne répond pas depuis les
-IP de GitHub Actions**, alors qu'il répond depuis d'autres réseaux. Le moteur
-bascule alors sur `coflix.mom`, constate que son sitemap est vide et **diffère la
-source sans faire échouer le run**. C'est un comportement voulu : pas de
-contournement, pas de VPN.
-
-Conséquence chiffrée : sur CI, **3 sources actives = ~135 420 fiches** au lieu de
-150 420. **La durée ne change pas** (FrenchStream reste le goulot à 119,9 h) :
-22 runs, ~5 jours, mais 31 jobs au lieu de 40 et 9 936 minutes au lieu de 12 641.
-
-Si un nouveau miroir Coflix redevient joignable, il suffit de l'ajouter à
-`SOURCES["coflix"]["mirrors"]` : `refresh.yml` le reprendra automatiquement.
+Suivi en direct :
+- onglet **Actions** du dépôt ;
+- branches `data-<source>` (base SQLite gzip, ~toutes les 25 min) ;
+- artefacts `db-<source>` en fin de job et `movibot-base-complete` après chaque run.
